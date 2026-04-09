@@ -50,80 +50,114 @@ HR_COLOR = "#31343C"
 
 PREVIEW_CSS = f"""
 body {{
-    font-family: "Inter", "Segoe UI", "Ubuntu", "DejaVu Sans", sans-serif;
+    font-family: "Inter", "Segoe UI", "SF Pro Display", "Roboto", sans-serif;
     background: {PREVIEW_BG};
     color: {EDITOR_FG};
     margin: 0;
-    padding: 28px 34px;
-    line-height: 1.72;
-    font-size: 15px;
+    padding: 30px 40px;
+    line-height: 1.8;
+    font-size: 16px;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
 }}
 
 * {{ box-sizing: border-box; }}
 
+::selection {{
+    background: rgba(122, 162, 247, 0.3);
+    color: inherit;
+}}
+
+/* Minimalist Scrollbar */
+::-webkit-scrollbar {{
+    width: 8px;
+    height: 8px;
+}}
+::-webkit-scrollbar-track {{
+    background: transparent;
+}}
+::-webkit-scrollbar-thumb {{
+    background: {DIVIDER};
+    border-radius: 10px;
+}}
+::-webkit-scrollbar-thumb:hover {{
+    background: {COMMENT};
+}}
+
 h1, h2, h3, h4, h5, h6 {{
-    color: #E5E9F0;
+    color: #F8F9FB;
     font-weight: 700;
-    margin-top: 1.4em;
-    margin-bottom: 0.55em;
-    line-height: 1.25;
+    margin-top: 1.6em;
+    margin-bottom: 0.6em;
+    line-height: 1.3;
 }}
 
 h1 {{
-    font-size: 2.15rem;
+    font-size: 2.4rem;
     border-bottom: 1px solid {DIVIDER};
-    padding-bottom: 0.38em;
+    padding-bottom: 0.4em;
+    letter-spacing: -0.02em;
 }}
 
 h2 {{
-    font-size: 1.6rem;
-    border-bottom: 1px solid #23262D;
-    padding-bottom: 0.28em;
+    font-size: 1.8rem;
+    border-bottom: 1px solid rgba(255,255,255, 0.05);
+    padding-bottom: 0.3em;
+    letter-spacing: -0.01em;
 }}
 
-h3 {{ font-size: 1.28rem; }}
-h4 {{ font-size: 1.08rem; }}
+h3 {{ font-size: 1.4rem; }}
+h4 {{ font-size: 1.15rem; }}
 
-p {{ margin: 0.75em 0; }}
+p {{ margin: 1em 0; }}
 
 a {{
     color: {LINK};
     text-decoration: none;
+    transition: color 0.2s ease;
+    border-bottom: 1px solid transparent;
 }}
 
-a:hover {{ text-decoration: underline; }}
+a:hover {{
+    color: #A0C3FF;
+    border-bottom-color: {LINK};
+}}
 
 hr {{
     border: none;
     border-top: 1px solid {HR_COLOR};
-    margin: 1.5em 0;
+    margin: 2em 0;
+    opacity: 0.6;
 }}
 
 blockquote {{
-    margin: 1em 0;
-    padding: 0.2em 0 0.2em 1em;
+    margin: 1.5em 0;
+    padding: 0.5em 1.2em;
     border-left: 4px solid {BLOCKQUOTE_BAR};
-    color: #C8CDD7;
+    color: #ABB2BF;
     background: rgba(255,255,255,0.02);
+    border-radius: 0 8px 8px 0;
 }}
 
 code {{
-    font-family: "JetBrains Mono", "Ubuntu Mono", "DejaVu Sans Mono", monospace;
+    font-family: "JetBrains Mono", "SF Mono", "Menlo", monospace;
     background: {INLINE_CODE_BG};
     color: {YELLOW};
-    padding: 0.18em 0.4em;
+    padding: 0.2em 0.45em;
     border-radius: 6px;
-    font-size: 0.95em;
+    font-size: 0.9em;
 }}
 
 pre {{
     background: {CODE_BG};
     color: {EDITOR_FG};
-    padding: 14px 16px;
-    border-radius: 10px;
+    padding: 20px;
+    border-radius: 12px;
     overflow-x: auto;
     border: 1px solid {DIVIDER};
-    box-shadow: inset 0 1px 0 rgba(255,255,255,0.02);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+    margin: 1.5em 0;
 }}
 
 pre code {{
@@ -131,24 +165,28 @@ pre code {{
     color: inherit;
     padding: 0;
     border-radius: 0;
+    line-height: 1.5;
 }}
 
 ul, ol {{
-    margin: 0.5em 0 1em 1.45em;
+    margin: 1em 0 1.5em 1.6em;
     padding: 0;
 }}
 
-li {{ margin: 0.35em 0; }}
+li {{ margin: 0.5em 0; }}
 
 img {{
     max-width: 100%;
-    border-radius: 10px;
+    border-radius: 12px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.3);
+    margin: 1.5em 0;
 }}
 
 table {{
     width: 100%;
-    border-collapse: collapse;
-    margin: 1em 0;
+    border-collapse: separate;
+    border-spacing: 0;
+    margin: 1.5em 0;
     overflow: hidden;
     border-radius: 10px;
     border: 1px solid {DIVIDER};
@@ -156,48 +194,95 @@ table {{
 
 th, td {{
     text-align: left;
-    padding: 10px 12px;
+    padding: 12px 16px;
     border-bottom: 1px solid {DIVIDER};
 }}
 
 th {{
     background: #23262D;
-    color: #E5E9F0;
+    color: #F8F9FB;
+    font-weight: 600;
+    text-transform: uppercase;
+    font-size: 0.85em;
+    letter-spacing: 0.05em;
+}}
+
+tr:last-child td {{
+    border-bottom: none;
 }}
 
 tr:nth-child(even) td {{
     background: rgba(255,255,255,0.015);
 }}
 
+/* Checkbox styling */
+input[type="checkbox"] {{
+    appearance: none;
+    -webkit-appearance: none;
+    width: 16px;
+    height: 16px;
+    border: 1.5px solid {GREEN};
+    border-radius: 4px;
+    background: rgba(152,195,121,0.1);
+    cursor: default;
+    vertical-align: middle;
+    margin-right: 10px;
+    position: relative;
+    top: -1px;
+}}
+input[type="checkbox"]:checked {{
+    background: {RED};
+    border-color: {RED};
+}}
+input[type="checkbox"]:checked::after {{
+    content: "L";
+    position: absolute;
+    left: 4px;
+    top: -2px;
+    width: 6px;
+    height: 10px;
+    border: solid white;
+    border-width: 0 2px 2px 0;
+    transform: rotate(45deg);
+}}
+
 .tag {{
     color: {TAG};
     font-weight: 600;
+    background: rgba(125, 207, 255, 0.1);
+    padding: 1px 6px;
+    border-radius: 4px;
 }}
 
 .wikilink {{
     color: {PURPLE};
     font-weight: 600;
+    border-bottom: 1px dashed {PURPLE};
 }}
 
 .callout {{
     border: 1px solid {DIVIDER};
     border-left: 4px solid {LINK};
-    background: rgba(122,162,247,0.08);
-    border-radius: 10px;
-    padding: 12px 14px;
-    margin: 1em 0;
+    background: rgba(122,162,247,0.06);
+    border-radius: 12px;
+    padding: 16px 20px;
+    margin: 1.5em 0;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
 }}
 
 .callout-title {{
-    font-weight: 700;
-    margin-bottom: 6px;
-    color: #E5E9F0;
+    font-weight: 750;
+    margin-bottom: 8px;
+    color: #F8F9FB;
+    font-size: 1.05em;
+    display: flex;
+    align-items: center;
 }}
 
 .callout-note {{ border-left-color: {LINK}; }}
-.callout-warning {{ border-left-color: {ORANGE}; background: rgba(209,154,102,0.08); }}
-.callout-tip {{ border-left-color: {GREEN}; background: rgba(152,195,121,0.08); }}
-.callout-danger {{ border-left-color: {RED}; background: rgba(224,108,117,0.08); }}
+.callout-warning {{ border-left-color: {ORANGE}; background: rgba(209,154,102,0.06); }}
+.callout-tip {{ border-left-color: {GREEN}; background: rgba(152,195,121,0.06); }}
+.callout-danger {{ border-left-color: {RED}; background: rgba(224,108,117,0.06); }}
 """
 
 
@@ -230,6 +315,10 @@ BOM_STATUS = "Verified"
 | Auto-save Implementation | ✅ Done | High |
 | Attachment Support | ⏳ Planned | Medium |
 | Remote Sync | 🗺️ Roadmap | Low |
+
+
+- [ ] مهمة غير مكتملة
+- [x] مهمة مكتملة
 
 ---
 *Developed for KiCad as a Productivity tool.*
@@ -327,6 +416,14 @@ class StyledMarkdownCtrl(stc.StyledTextCtrl):
             for m in re.finditer(r'`.*?`', line_text):
                 self.StartStyling(line_start + m.start())
                 self.SetStyling(m.end() - m.start(), 10) # Style 10: Code
+
+            # Checkboxes [ ] and [x]
+            for m in re.finditer(r'\[\s\]', line_text):
+                self.StartStyling(line_start + m.start())
+                self.SetStyling(m.end() - m.start(), 13) # Style 13: Unchecked
+            for m in re.finditer(r'\[x\]', line_text):
+                self.StartStyling(line_start + m.start())
+                self.SetStyling(m.end() - m.start(), 14) # Style 14: Checked
                 
             # Links [text](url)
             for m in re.finditer(r'\[.*?\]\(.*?\)', line_text):
@@ -361,6 +458,8 @@ class StyledMarkdownCtrl(stc.StyledTextCtrl):
         self.StyleSetSpec(10, f"fore:{GREEN},back:{INLINE_CODE_BG}")
         self.StyleSetSpec(11, f"fore:{COMMENT},italic")
         self.StyleSetSpec(12, f"fore:{TAG},bold") # Style 12: Tag
+        self.StyleSetSpec(13, f"fore:{GREEN},bold") # Style 13: Unchecked (Now Green)
+        self.StyleSetSpec(14, f"fore:{RED},bold") # Style 14: Checked (Now Red)
 
         self.StyleSetSpec(stc.STC_STYLE_LINENUMBER, f"face:JetBrains Mono,Ubuntu Mono,size:10,fore:{GUTTER_FG},back:{GUTTER_BG}")
 
@@ -529,6 +628,10 @@ class LivePreviewFrame(wx.Frame):
             i += 1
 
         processed = "\n".join(out)
+        # Checkboxes
+        processed = re.sub(r'-\s+\[\s\]\s+(.*)', r'<p><input type="checkbox" disabled /> \1</p>', processed)
+        processed = re.sub(r'-\s+\[x\]\s+(.*)', r'<p><input type="checkbox" disabled checked /> \1</p>', processed)
+        
         processed = re.sub(r'(^|[\s\(])(#([A-Za-z0-9_\-]+))', r'\1<span class="tag">#\3</span>', processed)
         processed = re.sub(r'\[\[([^\]|]+)\|([^\]]+)\]\]', r'<span class="wikilink">\2</span>', processed)
         processed = re.sub(r'\[\[([^\]]+)\]\]', r'<span class="wikilink">\1</span>', processed)
