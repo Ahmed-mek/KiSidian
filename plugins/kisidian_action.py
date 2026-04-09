@@ -474,6 +474,13 @@ class LivePreviewFrame(wx.Frame):
         badge.SetForegroundColour("#DCE3EA")
         badge.SetBackgroundColour("#2A2D34")
         badge.SetWindowStyleFlag(wx.BORDER_NONE)
+        
+        save_btn = wx.Button(header, label="Save Notes", size=(100, 30))
+        save_btn.SetBackgroundColour("#2D3139")
+        save_btn.SetForegroundColour("#E5E9F0")
+        save_btn.Bind(wx.EVT_BUTTON, self._on_save_clicked)
+
+        sizer.Add(save_btn, 0, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 12)
         sizer.Add(badge, 0, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 12)
 
         header.SetSizer(sizer)
@@ -560,7 +567,11 @@ class LivePreviewFrame(wx.Frame):
         self._preview_timer = wx.CallLater(120, self._update_preview)
         event.Skip()
 
-    def _on_close(self, event):
+    def _on_save_clicked(self, event):
+        self._save_to_file()
+        wx.MessageBox("Notes saved successfully to .kisidian/notes.md", "KiSidian", wx.OK | wx.ICON_INFORMATION)
+
+    def _save_to_file(self):
         if self.notes_file:
             try:
                 # Ensure directory exists
@@ -572,7 +583,9 @@ class LivePreviewFrame(wx.Frame):
                     f.write(self.editor.GetValue())
             except Exception as e:
                 wx.MessageBox(f"Error saving notes: {str(e)}", "KiSidian Error", wx.OK | wx.ICON_ERROR)
-        
+
+    def _on_close(self, event):
+        self._save_to_file()
         self.Destroy()
 
 
@@ -605,7 +618,9 @@ class KiSidianPlugin(pcbnew.ActionPlugin):
             pcb_path = board.GetFileName()
             if pcb_path:
                 project_dir = os.path.dirname(pcb_path)
-                notes_file = os.path.join(project_dir, "notes.md")
+                # Save in a hidden .kisidian folder
+                kisidian_dir = os.path.join(project_dir, ".kisidian")
+                notes_file = os.path.join(kisidian_dir, "notes.md")
             else:
                 notes_file = None
         except Exception:
