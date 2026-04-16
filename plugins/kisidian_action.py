@@ -49,9 +49,14 @@ BLOCKQUOTE_BAR = "#4C566A"
 HR_COLOR = "#31343C"
 
 PREVIEW_CSS = f"""
+html {{
+    background-color: {PREVIEW_BG};
+    color-scheme: dark;
+}}
+
 body {{
     font-family: "Inter", "Segoe UI", "SF Pro Display", "Roboto", sans-serif;
-    background: {PREVIEW_BG};
+    background-color: {PREVIEW_BG};
     color: {EDITOR_FG};
     margin: 0;
     padding: 30px 40px;
@@ -326,12 +331,13 @@ BOM_STATUS = "Verified"
 
 class TabButton(wx.Panel):
     """Custom tab button with hover and active states."""
-    def __init__(self, parent, filename, label, is_active, callback):
+    def __init__(self, parent, filename, label, is_active, callback, right_callback=None):
         super().__init__(parent)
         self.filename = filename
         self.label = label
         self.is_active = is_active
         self.callback = callback
+        self.right_callback = right_callback
         self.hover = False
         
         self.SetCursor(wx.Cursor(wx.CURSOR_HAND))
@@ -341,6 +347,7 @@ class TabButton(wx.Panel):
         self.Bind(wx.EVT_ENTER_WINDOW, self.OnEnter)
         self.Bind(wx.EVT_LEAVE_WINDOW, self.OnLeave)
         self.Bind(wx.EVT_LEFT_DOWN, self.OnClick)
+        self.Bind(wx.EVT_RIGHT_DOWN, self.OnRightClick)
         
         # Calculate size based on label
         font = wx.Font(9, wx.FONTFAMILY_DEFAULT, wx.FONTSTYLE_NORMAL, wx.FONTWEIGHT_BOLD)
@@ -360,6 +367,10 @@ class TabButton(wx.Panel):
 
     def OnClick(self, event):
         self.callback(self.filename)
+
+    def OnRightClick(self, event):
+        if self.right_callback:
+            self.right_callback(self.filename, event)
 
     def OnPaint(self, event):
         dc = wx.AutoBufferedPaintDC(self)
@@ -586,19 +597,6 @@ class LivePreviewFrame(wx.Frame):
                 with open(path, 'w', encoding='utf-8') as f:
                     f.write(f"# {title}\n\nStart writing your notes here...")
 
-    def _update_preview(self):
-        # Triggered by timer or load
-        rendered = self._render_markdown(self.editor.GetValue())
-        html_doc = (
-            "<!doctype html><html><head>"
-            "<meta charset='utf-8'>"
-            f"<style>{PREVIEW_CSS}</style>"
-            "</head><body>"
-            f"{rendered}"
-            "</body></html>"
-        )
-        self._set_preview_html(html_doc)
-
     def load_content(self, text):
         self.editor.SetText(text)
         self._update_preview()
@@ -683,7 +681,7 @@ class LivePreviewFrame(wx.Frame):
             display_name = self.core_files.get(filename, filename.replace(".md", "").replace("_", " ").title())
             is_active = (filename == self.active_file)
             
-            tab = TabButton(self.tabs_container, filename, display_name, is_active, self._on_tab_click)
+            tab = TabButton(self.tabs_container, filename, display_name, is_active, self._on_tab_click, self._on_tab_right_click)
             self.tab_sizer.Add(tab, 0, wx.EXPAND)
             self.tab_buttons[filename] = tab
 
@@ -702,6 +700,87 @@ class LivePreviewFrame(wx.Frame):
 
     def _on_tab_click(self, filename):
         self._on_file_selected(filename)
+
+    def _on_tab_right_click(self, filename, event):
+        menu = wx.Menu()
+        
+        item_add = menu.Append(wx.ID_ANY, "Add New Note")
+        item_refresh = menu.Append(wx.ID_ANY, "Refresh List")
+        menu.AppendSeparator()
+        
+        item_rename = menu.Append(wx.ID_ANY, f"Rename '{filename}'")
+        item_delete = menu.Append(wx.ID_ANY, f"Delete '{filename}'")
+        
+        # Disable rename/delete for core files
+        if filename in self.core_files:
+            item_rename.Enable(False)
+            item_delete.Enable(False)
+            
+        self.Bind(wx.EVT_MENU, self._on_add_file, item_add)
+        self.Bind(wx.EVT_MENU, lambda e: self._refresh_file_list(), item_refresh)
+        self.Bind(wx.EVT_MENU, lambda e: self._on_rename_file(filename), item_rename)
+        self.Bind(wx.EVT_MENU, lambda e: self._on_delete_file(filename), item_delete)
+        
+        self.PopupMenu(menu)
+        menu.Destroy()
+
+    def _on_add_file(self, event):
+        dlg = wx.TextEntryDialog(self, "Enter new note name (e.g. my_ideas):", "Add New Note")
+        if dlg.ShowModal() == wx.ID_OK:
+            name = dlg.GetValue().strip()
+            if not name: return
+            if not name.endswith(".md"): name += ".md"
+            
+            path = os.path.join(self.kisidian_dir, name)
+            if os.path.exists(path):
+                wx.MessageBox("A file with this name already exists.", "Error", wx.OK | wx.ICON_ERROR)
+                return
+                
+            try:
+                with open(path, 'w', encoding='utf-8') as f:
+                    f.write(f"# {name.replace('.md', '').replace('_', ' ').title()}\n\n")
+                self._refresh_file_list()
+                self._on_file_selected(name)
+            except Exception as e:
+                wx.MessageBox(f"Could not create file: {str(e)}", "Error", wx.OK | wx.ICON_ERROR)
+        dlg.Destroy()
+
+    def _on_rename_file(self, filename):
+        old_path = os.path.join(self.kisidian_dir, filename)
+        dlg = wx.TextEntryDialog(self, f"Rename '{filename}' to:", "Rename Note", filename)
+        if dlg.ShowModal() == wx.ID_OK:
+            new_name = dlg.GetValue().strip()
+            if not new_name or new_name == filename: return
+            if not new_name.endswith(".md"): new_name += ".md"
+            
+            new_path = os.path.join(self.kisidian_dir, new_name)
+            if os.path.exists(new_path):
+                wx.MessageBox("A file with this name already exists.", "Error", wx.OK | wx.ICON_ERROR)
+                return
+                
+            try:
+                os.rename(old_path, new_path)
+                if self.active_file == filename:
+                    self.active_file = new_name
+                self._refresh_file_list()
+            except Exception as e:
+                wx.MessageBox(f"Could not rename file: {str(e)}", "Error", wx.OK | wx.ICON_ERROR)
+        dlg.Destroy()
+
+    def _on_delete_file(self, filename):
+        path = os.path.join(self.kisidian_dir, filename)
+        msg = f"Are you sure you want to delete '{filename}'?\nThis action cannot be undone."
+        if wx.MessageBox(msg, "Confirm Deletion", wx.YES_NO | wx.ICON_WARNING) == wx.YES:
+            try:
+                os.remove(path)
+                if self.active_file == filename:
+                    self.active_file = "design_notes.md"
+                self._refresh_file_list()
+                if self.active_file == "design_notes.md":
+                    # Force reload design notes if we were on the deleted file
+                    self._on_file_selected("design_notes.md")
+            except Exception as e:
+                wx.MessageBox(f"Could not delete file: {str(e)}", "Error", wx.OK | wx.ICON_ERROR)
 
     def _on_file_selected(self, filename):
         if self.active_file == filename:
@@ -838,8 +917,9 @@ class LivePreviewFrame(wx.Frame):
         html_doc = (
             "<!doctype html><html><head>"
             "<meta charset='utf-8'>"
+            "<meta name='color-scheme' content='dark'>"
             f"<style>{PREVIEW_CSS}</style>"
-            "</head><body>"
+            f"</head><body bgcolor='{PREVIEW_BG}' text='{EDITOR_FG}'>"
             f"{rendered}"
             "</body></html>"
         )
