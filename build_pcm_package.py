@@ -23,29 +23,34 @@ def build():
     zip_name = dist / f"KiSidian-{version}-pcm.zip"
     
     with zipfile.ZipFile(zip_name, 'w', zipfile.ZIP_DEFLATED) as zf:
-        # Add plugins/ content (files directly under plugins/, NOT plugins/kisidian/)
-        # KiCad PCM extracts to: .../plugins/com_pcbtools_kisidian/
-        # So our files go directly there, not in a kisidian/ subfolder
-        src = Path("kisidian")
+        # Add plugins/ content
+        src = Path("plugins")
         for f in src.rglob("*"):
             if f.is_file() and "__pycache__" not in str(f):
-                # Use relative path from kisidian/ directly under plugins/
+                # Use relative path from plugins/
                 arcname = f"plugins/{f.relative_to(src)}"
                 zf.write(f, arcname)
                 print(f"  + {arcname}")
         
         # Add root metadata.json
-        zf.write("metadata.json", "metadata.json")
-        print("  + metadata.json (root)")
+        if os.path.exists("metadata.json"):
+            zf.write("metadata.json", "metadata.json")
+            print("  + metadata.json (root)")
         
-        # Add resources/icon.png (64x64 for PCM)
-        icon = Path("resources/icons/icon.png")
+        # Add root LICENSE if it exists
+        if os.path.exists("LICENSE"):
+            zf.write("LICENSE", "LICENSE")
+            print("  + LICENSE (root)")
+        
+        # Add icon to resources/icon.png (PCM requirement)
+        icon = Path("plugins/icon.png")
         if icon.exists():
             zf.write(icon, "resources/icon.png")
             print("  + resources/icon.png")
     
     print(f"\n✅ Created: {zip_name}")
-    print(f"   Size: {zip_name.stat().st_size / 1024:.1f} KB")
+    if zip_name.exists():
+        print(f"   Size: {zip_name.stat().st_size / 1024:.1f} KB")
 
 if __name__ == "__main__":
     build()

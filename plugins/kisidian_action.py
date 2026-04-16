@@ -324,6 +324,68 @@ BOM_STATUS = "Verified"
 *Developed for KiCad as a Productivity tool.*
 """
 
+class TabButton(wx.Panel):
+    """Custom tab button with hover and active states."""
+    def __init__(self, parent, filename, label, is_active, callback):
+        super().__init__(parent)
+        self.filename = filename
+        self.label = label
+        self.is_active = is_active
+        self.callback = callback
+        self.hover = False
+        
+        self.SetCursor(wx.Cursor(wx.CURSOR_HAND))
+        self.SetBackgroundStyle(wx.BG_STYLE_PAINT)
+        
+        self.Bind(wx.EVT_PAINT, self.OnPaint)
+        self.Bind(wx.EVT_ENTER_WINDOW, self.OnEnter)
+        self.Bind(wx.EVT_LEAVE_WINDOW, self.OnLeave)
+        self.Bind(wx.EVT_LEFT_DOWN, self.OnClick)
+        
+        # Calculate size based on label
+        font = wx.Font(9, wx.FONTFAMILY_DEFAULT, wx.FONTSTYLE_NORMAL, wx.FONTWEIGHT_BOLD)
+        # We need a DC to measure text
+        temp_dc = wx.ScreenDC()
+        temp_dc.SetFont(font)
+        w, h = temp_dc.GetTextExtent(label)
+        self.SetMinSize((w + 32, 40)) 
+
+    def OnEnter(self, event):
+        self.hover = True
+        self.Refresh()
+
+    def OnLeave(self, event):
+        self.hover = False
+        self.Refresh()
+
+    def OnClick(self, event):
+        self.callback(self.filename)
+
+    def OnPaint(self, event):
+        dc = wx.AutoBufferedPaintDC(self)
+        
+        # Background
+        bg_color = wx.Colour("#2D3139") if self.hover and not self.is_active else wx.Colour("#1B1D23")
+        if self.is_active: 
+            bg_color = wx.Colour("#16181D")
+        
+        dc.SetBackground(wx.Brush(bg_color))
+        dc.Clear()
+        
+        # Text
+        text_color = wx.Colour("#FFFFFF") if self.is_active else (wx.Colour("#DCE3EA") if self.hover else wx.Colour(COMMENT))
+        dc.SetTextForeground(text_color)
+        dc.SetFont(wx.Font(9, wx.FONTFAMILY_DEFAULT, wx.FONTSTYLE_NORMAL, wx.FONTWEIGHT_BOLD))
+        
+        w, h = self.GetSize()
+        tw, th = dc.GetTextExtent(self.label)
+        dc.DrawText(self.label, (w - tw) // 2, (h - th) // 2)
+        
+        # Active Indicator (Bottom line)
+        if self.is_active:
+            dc.SetPen(wx.Pen(wx.Colour(PURPLE), 3))
+            dc.DrawLine(0, h-1, w, h-1)
+
 
 
 class StyledMarkdownCtrl(stc.StyledTextCtrl):
@@ -487,15 +549,55 @@ class StyledMarkdownCtrl(stc.StyledTextCtrl):
 
 
 class LivePreviewFrame(wx.Frame):
-    def __init__(self):
-        super().__init__(None, title="KiSidian", size=(1280, 760))
-        self.notes_file = None
+    def __init__(self, project_dir=None):
+        super().__init__(None, title="KiSidian", size=(1280, 800))
+        self.project_dir = project_dir
+        self.kisidian_dir = os.path.join(project_dir, "kisidian") if project_dir else None
+        self.active_file = None
         self._preview_timer = None
+        self.show_preview = True
+        
+        self.core_files = {
+            "design_notes.md": "Design Notes",
+            "component_note.md": "Component Note",
+            "checklist.md": "Checklist"
+        }
+
+        self._ensure_kisidian_setup()
         self._build_ui()
         self.Bind(wx.EVT_CLOSE, self._on_close)
+        
+        # Load first file by default
+        if self.kisidian_dir:
+            self._refresh_file_list()
+            self._on_file_selected("design_notes.md")
+
+    def _ensure_kisidian_setup(self):
+        if not self.kisidian_dir:
+            return
+            
+        if not os.path.exists(self.kisidian_dir):
+            os.makedirs(self.kisidian_dir)
+            
+        # Create core files if missing
+        for filename, title in self.core_files.items():
+            path = os.path.join(self.kisidian_dir, filename)
+            if not os.path.exists(path):
+                with open(path, 'w', encoding='utf-8') as f:
+                    f.write(f"# {title}\n\nStart writing your notes here...")
+
     def _update_preview(self):
-        # We'll call this after setting text or on change
-        pass
+        # Triggered by timer or load
+        rendered = self._render_markdown(self.editor.GetValue())
+        html_doc = (
+            "<!doctype html><html><head>"
+            "<meta charset='utf-8'>"
+            f"<style>{PREVIEW_CSS}</style>"
+            "</head><body>"
+            f"{rendered}"
+            "</body></html>"
+        )
+        self._set_preview_html(html_doc)
 
     def load_content(self, text):
         self.editor.SetText(text)
@@ -511,24 +613,36 @@ class LivePreviewFrame(wx.Frame):
         root = wx.BoxSizer(wx.VERTICAL)
 
         header = self._build_header(panel)
-        root.Add(header, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.TOP, 10)
+        root.Add(header, 0, wx.EXPAND)
 
-        splitter = wx.SplitterWindow(panel, style=wx.SP_LIVE_UPDATE | wx.BORDER_NONE)
-        splitter.SetSashGravity(0.5)
-        splitter.SetMinimumPaneSize(260)
-        splitter.SetBackgroundColour(DIVIDER)
+        # Tabs Area
+        self.tabs_container = wx.Panel(panel)
+        self.tabs_container.SetBackgroundColour("#1B1D23")
+        self.tab_sizer = wx.BoxSizer(wx.HORIZONTAL)
+        self.tabs_container.SetSizer(self.tab_sizer)
+        
+        root.Add(self.tabs_container, 0, wx.EXPAND)
+        
+        # Thin divider below tabs
+        divider = wx.Panel(panel, size=(-1, 1))
+        divider.SetBackgroundColour(DIVIDER)
+        root.Add(divider, 0, wx.EXPAND)
 
-        editor_panel = wx.Panel(splitter)
-        preview_panel = wx.Panel(splitter)
-        editor_panel.SetBackgroundColour(EDITOR_BG)
-        preview_panel.SetBackgroundColour(PREVIEW_BG)
+        # Content Splitter
+        self.splitter = wx.SplitterWindow(panel, style=wx.SP_LIVE_UPDATE | wx.BORDER_NONE)
+        self.splitter.SetSashGravity(0.5)
+        self.splitter.SetMinimumPaneSize(300)
+        self.splitter.SetBackgroundColour(DIVIDER)
 
-        self.editor = StyledMarkdownCtrl(editor_panel)
-        # Internal patching is handled by StyledMarkdownCtrl itself.
-        # We also need to trigger the preview update here.
+        self.editor_panel = wx.Panel(self.splitter)
+        self.preview_panel = wx.Panel(self.splitter)
+        self.editor_panel.SetBackgroundColour(EDITOR_BG)
+        self.preview_panel.SetBackgroundColour(PREVIEW_BG)
+
+        self.editor = StyledMarkdownCtrl(self.editor_panel)
         self.editor.Bind(stc.EVT_STC_CHANGE, self._on_text_change)
 
-        self.preview = self._make_preview_ctrl(preview_panel)
+        self.preview = self._make_preview_ctrl(self.preview_panel)
         try:
             self.preview.SetBackgroundColour(PREVIEW_BG)
         except Exception:
@@ -536,17 +650,78 @@ class LivePreviewFrame(wx.Frame):
 
         editor_box = wx.BoxSizer(wx.VERTICAL)
         editor_box.Add(self.editor, 1, wx.EXPAND | wx.ALL, 12)
-        editor_panel.SetSizer(editor_box)
+        self.editor_panel.SetSizer(editor_box)
 
         preview_box = wx.BoxSizer(wx.VERTICAL)
         preview_box.Add(self.preview, 1, wx.EXPAND | wx.ALL, 12)
-        preview_panel.SetSizer(preview_box)
+        self.preview_panel.SetSizer(preview_box)
 
-        splitter.SplitVertically(editor_panel, preview_panel, sashPosition=640)
-        root.Add(splitter, 1, wx.EXPAND | wx.ALL, 10)
+        self.splitter.SplitVertically(self.editor_panel, self.preview_panel, sashPosition=500)
+        root.Add(self.splitter, 1, wx.EXPAND)
 
         panel.SetSizer(root)
         self.SetBackgroundColour(APP_BG)
+
+    def _refresh_file_list(self):
+        if not self.kisidian_dir or not os.path.exists(self.kisidian_dir):
+            return
+            
+        files = [f for f in os.listdir(self.kisidian_dir) if f.endswith(".md")]
+        core_ordered = [f for f in self.core_files.keys() if f in files]
+        others = sorted([f for f in files if f not in self.core_files.keys()])
+        all_files = core_ordered + others
+        
+        self.file_items = all_files
+        self._update_tab_buttons()
+
+    def _update_tab_buttons(self):
+        # Clear existing tabs
+        self.tab_sizer.Clear(True)
+        self.tab_buttons = {}
+
+        for filename in self.file_items:
+            display_name = self.core_files.get(filename, filename.replace(".md", "").replace("_", " ").title())
+            is_active = (filename == self.active_file)
+            
+            tab = TabButton(self.tabs_container, filename, display_name, is_active, self._on_tab_click)
+            self.tab_sizer.Add(tab, 0, wx.EXPAND)
+            self.tab_buttons[filename] = tab
+
+        self.tabs_container.Layout()
+
+    def _on_toggle_preview(self, event):
+        if self.show_preview:
+            self.splitter.Unsplit(self.preview_panel)
+            self.toggle_preview_btn.SetLabel("Show Preview")
+        else:
+            self.splitter.SplitVertically(self.editor_panel, self.preview_panel, 500)
+            self.toggle_preview_btn.SetLabel("Hide Preview")
+        
+        self.show_preview = not self.show_preview
+        self.Layout()
+
+    def _on_tab_click(self, filename):
+        self._on_file_selected(filename)
+
+    def _on_file_selected(self, filename):
+        if self.active_file == filename:
+            return
+            
+        if self.active_file:
+            self._save_to_file()
+            
+        self.active_file = filename
+        path = os.path.join(self.kisidian_dir, filename)
+        
+        if os.path.exists(path):
+            try:
+                with open(path, 'r', encoding='utf-8') as f:
+                    content = f.read()
+                self.editor.SetText(content)
+                self._update_preview()
+                self._update_tab_buttons() # Redraw tabs to update highlight
+            except Exception as e:
+                wx.MessageBox(f"Error loading {filename}: {str(e)}", "Error", wx.OK | wx.ICON_ERROR)
 
     def _build_header(self, parent):
         header = wx.Panel(parent)
@@ -574,11 +749,17 @@ class LivePreviewFrame(wx.Frame):
         badge.SetBackgroundColour("#2A2D34")
         badge.SetWindowStyleFlag(wx.BORDER_NONE)
         
+        self.toggle_preview_btn = wx.Button(header, label="Hide Preview", size=(120, 30))
+        self.toggle_preview_btn.SetBackgroundColour("#2D3139")
+        self.toggle_preview_btn.SetForegroundColour("#E5E9F0")
+        self.toggle_preview_btn.Bind(wx.EVT_BUTTON, self._on_toggle_preview)
+
         save_btn = wx.Button(header, label="Save Notes", size=(100, 30))
         save_btn.SetBackgroundColour("#2D3139")
         save_btn.SetForegroundColour("#E5E9F0")
         save_btn.Bind(wx.EVT_BUTTON, self._on_save_clicked)
 
+        sizer.Add(self.toggle_preview_btn, 0, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 12)
         sizer.Add(save_btn, 0, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 12)
         sizer.Add(badge, 0, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 12)
 
@@ -672,17 +853,16 @@ class LivePreviewFrame(wx.Frame):
 
     def _on_save_clicked(self, event):
         self._save_to_file()
-        wx.MessageBox("Notes saved successfully to .kisidian/notes.md", "KiSidian", wx.OK | wx.ICON_INFORMATION)
+        wx.MessageBox(f"'{self.active_file}' saved successfully to kisidian/", "KiSidian", wx.OK | wx.ICON_INFORMATION)
 
     def _save_to_file(self):
-        if self.notes_file:
+        if self.kisidian_dir and self.active_file:
             try:
-                # Ensure directory exists
-                project_dir = os.path.dirname(self.notes_file)
-                if not os.path.exists(project_dir):
-                    os.makedirs(project_dir)
+                if not os.path.exists(self.kisidian_dir):
+                    os.makedirs(self.kisidian_dir)
                 
-                with open(self.notes_file, 'w', encoding='utf-8') as f:
+                path = os.path.join(self.kisidian_dir, self.active_file)
+                with open(path, 'w', encoding='utf-8') as f:
                     f.write(self.editor.GetValue())
             except Exception as e:
                 wx.MessageBox(f"Error saving notes: {str(e)}", "KiSidian Error", wx.OK | wx.ICON_ERROR)
@@ -716,32 +896,36 @@ class KiSidianPlugin(pcbnew.ActionPlugin):
                 self.frame = None
 
         # Try to find the project directory
+        project_dir = None
         try:
             board = pcbnew.GetBoard()
             pcb_path = board.GetFileName()
             if pcb_path:
                 project_dir = os.path.dirname(pcb_path)
-                # Save in a hidden .kisidian folder
-                kisidian_dir = os.path.join(project_dir, ".kisidian")
-                notes_file = os.path.join(kisidian_dir, "notes.md")
             else:
-                notes_file = None
+                # Try project manager context
+                try:
+                    project_dir = os.path.dirname(pcbnew.GetProjectPath())
+                except:
+                    pass
         except Exception:
-            notes_file = None
+            pass
 
-        self.frame = LivePreviewFrame()
-        
-        # Load existing notes if any
-        content = SAMPLE_TEXT
-        if notes_file and os.path.exists(notes_file):
+        # If we have no project_dir, we might not be able to save
+        if not project_dir:
+            wx.MessageBox("Could not determine project directory. Notes might not be saved.", "KiSidian Warning", wx.OK | wx.ICON_WARNING)
+            # Fallback to current directory or temp
+            project_dir = os.getcwd()
+
+        # Migration from hidden .kisidian
+        old_kisidian = os.path.join(project_dir, ".kisidian")
+        new_kisidian = os.path.join(project_dir, "kisidian")
+        if os.path.exists(old_kisidian) and not os.path.exists(new_kisidian):
             try:
-                with open(notes_file, 'r', encoding='utf-8') as f:
-                    content = f.read()
-            except Exception as e:
-                wx.MessageBox(f"Error loading notes: {str(e)}", "KiSidian Error", wx.OK | wx.ICON_ERROR)
+                os.rename(old_kisidian, new_kisidian)
+            except:
+                pass
 
-        self.frame.editor.SetText(content)
-        self.frame.notes_file = notes_file # Store it in frame to save later
-        
+        self.frame = LivePreviewFrame(project_dir=project_dir)
         self.frame.Show()
 
