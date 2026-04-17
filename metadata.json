@@ -22,16 +22,22 @@
         "homepage": "https://github.com/Ahmed-mek/KiSidian",
         "repository": "https://github.com/Ahmed-mek/KiSidian"
     },
-    "tags": ["notes", "documentation", "markdown", "obsidian", "pcb"],
+    "tags": [
+        "notes",
+        "documentation",
+        "markdown",
+        "obsidian",
+        "pcb"
+    ],
     "versions": [
         {
             "version": "1.2.0",
             "status": "stable",
             "kicad_version": "8.0",
-            "download_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
-            "download_size": 0,
+            "download_sha256": "2857fc13526f196d0bf6c1daf54968c07319e1b3ef23f1938548a06cb026bc66",
+            "download_size": 141387,
             "download_url": "https://github.com/Ahmed-mek/KiSidian/releases/download/v1.0.0/kisidian-1.0.0.zip",
-            "install_size": 0
+            "install_size": 389931
         }
     ]
 }

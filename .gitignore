@@ -1,6 +1,3 @@
-# KiCad PCM Build outputs
-dist/
-*.zip
 
 # Python
 __pycache__/
