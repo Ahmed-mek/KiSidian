@@ -59,26 +59,7 @@ def build():
         zf.write("metadata.json", "metadata.json")
         print("  + metadata.json (root)")
 
-    # 3. Calculate final zip stats
-    download_size = zip_name.stat().st_size
-    download_hash = get_file_hash(zip_name)
-
-    print(f"\nCalculated Stats:")
-    print(f"  Install Size: {install_size} bytes")
-    print(f"  Download Size: {download_size} bytes")
-    print(f"  SHA256: {download_hash}")
-
-    # 4. Update metadata.json locally with final stats
-    meta["versions"][0]["download_url"] = f"https://github.com/Ahmed-mek/KiSidian/releases/download/v{version}/KiSidian-{version}-pcm.zip"
-    meta["versions"][0]["install_size"] = install_size
-    meta["versions"][0]["download_size"] = download_size
-    meta["versions"][0]["download_sha256"] = download_hash
-    
-    with open("metadata.json", 'w', encoding='utf-8') as f:
-        json.dump(meta, f, indent=4)
-    print("\n✅ metadata.json (Local) updated with correct sizes, hash, and URL.")
-
-    # 5. Re-zip with STRIPPED metadata.json
+    # 4. Re-zip with STRIPPED metadata.json
     # Per KiCad requirements, the metadata.json INSIDE the zip MUST NOT 
     # contain download_url, download_sha256, or download_size.
     import copy
@@ -86,7 +67,7 @@ def build():
     for v in stripped_meta["versions"]:
         v.pop("download_url", None)
         v.pop("download_sha256", None)
-        v.pop("download_size", None) # Added missing pop
+        v.pop("download_size", None)
     
     with open("metadata_stripped.json", 'w', encoding='utf-8') as f:
         json.dump(stripped_meta, f, indent=4)
@@ -97,11 +78,30 @@ def build():
                 zf.write(f, f"plugins/{f.relative_to(src)}")
         if icon.exists():
             zf.write(icon, "resources/icon.png")
-        # Add the stripped version as 'metadata.json' inside the zip
         zf.write("metadata_stripped.json", "metadata.json")
     
     os.remove("metadata_stripped.json")
+
+    # 5. Calculate FINAL zip stats (AFTER stripping)
+    download_size = zip_name.stat().st_size
+    download_hash = get_file_hash(zip_name)
+
+    print(f"\nCalculated Final Stats:")
+    print(f"  Install Size: {install_size} bytes")
+    print(f"  Download Size: {download_size} bytes")
+    print(f"  SHA256: {download_hash}")
+
+    # 6. Update local metadata.json with FINAL stats
+    meta["versions"][0]["download_url"] = f"https://github.com/Ahmed-mek/KiSidian/releases/download/v{version}/KiSidian-{version}-pcm.zip"
+    meta["versions"][0]["install_size"] = install_size
+    meta["versions"][0]["download_size"] = download_size
+    meta["versions"][0]["download_sha256"] = download_hash
+    
+    with open("metadata.json", 'w', encoding='utf-8') as f:
+        json.dump(meta, f, indent=4)
+
     print(f"\n📦 Final Package (Compliant): {zip_name}")
+    print("✅ metadata.json (Local) updated with final compliant stats.")
 
 if __name__ == "__main__":
     build()
