@@ -34,10 +34,10 @@
             "version": "1.2.0",
             "status": "stable",
             "kicad_version": "8.0",
-            "download_sha256": "2857fc13526f196d0bf6c1daf54968c07319e1b3ef23f1938548a06cb026bc66",
-            "download_size": 141387,
-            "download_url": "https://github.com/Ahmed-mek/KiSidian/releases/download/v1.0.0/kisidian-1.0.0.zip",
-            "install_size": 389931
+            "download_sha256": "3edafe75dd8bbb9b89116575abda27d5d3b3e33de2ae566c371a59c0a04165e3",
+            "download_size": 141445,
+            "download_url": "https://github.com/Ahmed-mek/KiSidian/releases/download/v1.2.0/KiSidian-1.2.0-pcm.zip",
+            "install_size": 389987
         }
     ]
 }

@@ -69,26 +69,37 @@ def build():
     print(f"  SHA256: {download_hash}")
 
     # 4. Update metadata.json locally with final stats
+    meta["versions"][0]["download_url"] = f"https://github.com/Ahmed-mek/KiSidian/releases/download/v{version}/KiSidian-{version}-pcm.zip"
     meta["versions"][0]["install_size"] = install_size
     meta["versions"][0]["download_size"] = download_size
     meta["versions"][0]["download_sha256"] = download_hash
     
     with open("metadata.json", 'w', encoding='utf-8') as f:
         json.dump(meta, f, indent=4)
-    print("\n✅ metadata.json updated with correct sizes and hash.")
+    print("\n✅ metadata.json (Local) updated with correct sizes, hash, and URL.")
 
-    # 5. Re-zip with updated metadata.json
-    # Since we updated metadata.json AFTER zipping, we need to refresh it in the zip or zip again.
-    # Easiest is to zip again since it's fast.
+    # 5. Re-zip with STRIPPED metadata.json
+    # Per KiCad requirements, the metadata.json INSIDE the zip MUST NOT 
+    # contain download_url or download_sha256.
+    stripped_meta = meta.copy()
+    for v in stripped_meta["versions"]:
+        v.pop("download_url", None)
+        v.pop("download_sha256", None)
+    
+    with open("metadata_stripped.json", 'w', encoding='utf-8') as f:
+        json.dump(stripped_meta, f, indent=4)
+
     with zipfile.ZipFile(zip_name, 'w', zipfile.ZIP_DEFLATED) as zf:
         for f in src.rglob("*"):
             if f.is_file() and "__pycache__" not in str(f):
                 zf.write(f, f"plugins/{f.relative_to(src)}")
         if icon.exists():
             zf.write(icon, "resources/icon.png")
-        zf.write("metadata.json", "metadata.json")
-
-    print(f"\n📦 Final Package: {zip_name}")
+        # Add the stripped version as 'metadata.json' inside the zip
+        zf.write("metadata_stripped.json", "metadata.json")
+    
+    os.remove("metadata_stripped.json")
+    print(f"\n📦 Final Package (Compliant): {zip_name}")
 
 if __name__ == "__main__":
     build()
