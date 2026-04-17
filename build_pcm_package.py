@@ -80,11 +80,13 @@ def build():
 
     # 5. Re-zip with STRIPPED metadata.json
     # Per KiCad requirements, the metadata.json INSIDE the zip MUST NOT 
-    # contain download_url or download_sha256.
-    stripped_meta = meta.copy()
+    # contain download_url, download_sha256, or download_size.
+    import copy
+    stripped_meta = copy.deepcopy(meta)
     for v in stripped_meta["versions"]:
         v.pop("download_url", None)
         v.pop("download_sha256", None)
+        v.pop("download_size", None) # Added missing pop
     
     with open("metadata_stripped.json", 'w', encoding='utf-8') as f:
         json.dump(stripped_meta, f, indent=4)
