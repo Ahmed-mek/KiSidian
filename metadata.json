@@ -1,5 +1,5 @@
 {
-    "$schema": "https://go.kicad.org/pcm/schemas/v1",
+    "$schema": "https://go.kicad.org/pcm/schemas/v2",
     "name": "KiSidian",
     "description": "Obsidian-style notes inside KiCad",
     "description_full": "KiSidian is a KiCad plugin for writing and organizing engineering notes directly inside PCB projects. It features a split-pane Markdown editor with live preview, dark mode, and project-relative storage.",
@@ -22,6 +22,7 @@
         "homepage": "https://github.com/Ahmed-mek/KiSidian",
         "repository": "https://github.com/Ahmed-mek/KiSidian"
     },
+    "tags": ["notes", "documentation", "markdown", "obsidian", "pcb"],
     "versions": [
         {
             "version": "1.2.0",

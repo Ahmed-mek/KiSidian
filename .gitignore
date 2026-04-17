@@ -1,0 +1,16 @@
+# KiCad PCM Build outputs
+dist/
+*.zip
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# KiCad official repositories (Local copies)
+metadata-main/
+repository-main/
+
+# IDEs
+.vscode/
+.idea/
