@@ -5,6 +5,8 @@ import html
 import re
 import wx
 import wx.stc as stc
+import json
+import datetime
 
 # Add local lib directory to sys.path for vendored dependencies
 PLUG_DIR = os.path.abspath(os.path.dirname(__file__))
@@ -402,8 +404,9 @@ class TabButton(wx.Panel):
 class StyledMarkdownCtrl(stc.StyledTextCtrl):
     """Markdown editor with Obsidian-like dark styling."""
 
-    def __init__(self, parent):
+    def __init__(self, parent, show_line_numbers=True):
         super().__init__(parent, style=wx.BORDER_NONE)
+        self.show_line_numbers = show_line_numbers
         self._setup_editor()
 
     def _setup_editor(self):
@@ -430,7 +433,7 @@ class StyledMarkdownCtrl(stc.StyledTextCtrl):
 
         # Margin 0: line numbers
         self.SetMarginType(0, stc.STC_MARGIN_NUMBER)
-        self.SetMarginWidth(0, 52)
+        self.SetMarginWidth(0, 52 if self.show_line_numbers else 0)
         self.SetMarginSensitive(0, False)
 
         # Margin 1: fold markers (note: manual styling requires manual fold handling too if desired)
@@ -440,6 +443,31 @@ class StyledMarkdownCtrl(stc.StyledTextCtrl):
         self._apply_theme()
         self._setup_markers()
         self.Bind(stc.EVT_STC_STYLENEEDED, self._on_style_needed)
+        self.Bind(stc.EVT_STC_CHARADDED, self._on_char_added)
+
+    def _on_char_added(self, event):
+        char = event.GetKey()
+        if char == 10: # LF
+            curr_line = self.GetCurrentLine()
+            if curr_line > 0:
+                prev_line_text = self.GetLine(curr_line - 1)
+                
+                # Check for empty checkbox line to end list
+                # Matches "- [ ]", "- [x]", "- []" with varying spaces
+                if re.match(r'^\s*-\s\[[\sx\s]*\]\s*$', prev_line_text):
+                    # Remove the prefix from the previous line and the current newline
+                    start = self.PositionFromLine(curr_line - 1)
+                    end = self.GetLineEndPosition(curr_line)
+                    self.SetSelection(start, end)
+                    self.ReplaceSelection("")
+                    return
+
+                # Auto-insert checkbox (handles "- [ ] ", "- [] ", "- [ ]", etc.)
+                match = re.match(r'^(\s*)-\s?\[([\sx\s]*)\]\s?', prev_line_text)
+                if match:
+                    indent = match.group(1)
+                    prefix = "- [ ] "
+                    self.AddText(prefix)
 
     def _on_style_needed(self, event):
         pos = self.GetEndStyled()
@@ -491,12 +519,16 @@ class StyledMarkdownCtrl(stc.StyledTextCtrl):
                 self.SetStyling(m.end() - m.start(), 10) # Style 10: Code
 
             # Checkboxes [ ] and [x]
-            for m in re.finditer(r'\[\s\]', line_text):
+            # Improved regex to catch variations and the dash
+            for m in re.finditer(r'(-?\s*\[\s\])', line_text):
                 self.StartStyling(line_start + m.start())
                 self.SetStyling(m.end() - m.start(), 13) # Style 13: Unchecked
-            for m in re.finditer(r'\[x\]', line_text):
+            for m in re.finditer(r'(-?\s*\[x\])', line_text):
                 self.StartStyling(line_start + m.start())
                 self.SetStyling(m.end() - m.start(), 14) # Style 14: Checked
+            for m in re.finditer(r'(-\s*\[\])', line_text): # compact form
+                self.StartStyling(line_start + m.start())
+                self.SetStyling(m.end() - m.start(), 13)
                 
             # Links [text](url)
             for m in re.finditer(r'\[.*?\]\(.*?\)', line_text):
@@ -559,6 +591,74 @@ class StyledMarkdownCtrl(stc.StyledTextCtrl):
                 self.ToggleFold(line)
 
 
+
+class NextStepBanner(wx.Panel):
+    """A banner that displays the current next step from NEXT_STEP.md"""
+    def __init__(self, parent, project_dir):
+        super().__init__(parent)
+        self.project_dir = project_dir
+        self.SetBackgroundColour("#2A2D34")
+        self.SetMinSize((-1, 50))
+        
+        self.sizer = wx.BoxSizer(wx.HORIZONTAL)
+        
+        icon = wx.StaticText(self, label="🚀 NEXT STEP:")
+        icon.SetForegroundColour("#E5C07B")
+        icon.SetFont(wx.Font(10, wx.FONTFAMILY_DEFAULT, wx.FONTSTYLE_NORMAL, wx.FONTWEIGHT_BOLD))
+        
+        self.text = wx.StaticText(self, label="Loading...")
+        self.text.SetForegroundColour("#FFFFFF")
+        self.text.SetFont(wx.Font(10, wx.FONTFAMILY_DEFAULT, wx.FONTSTYLE_NORMAL, wx.FONTWEIGHT_NORMAL))
+        
+        self.sizer.Add(icon, 0, wx.LEFT | wx.ALIGN_CENTER_VERTICAL, 15)
+        self.sizer.Add(self.text, 1, wx.LEFT | wx.ALIGN_CENTER_VERTICAL, 10)
+        
+        edit_btn = wx.Button(self, label="Update Plan", size=(100, 26))
+        edit_btn.SetBackgroundColour("#3E4452")
+        edit_btn.SetForegroundColour("#FFFFFF")
+        edit_btn.Bind(wx.EVT_BUTTON, self.OnUpdatePlan)
+        self.sizer.Add(edit_btn, 0, wx.RIGHT | wx.ALIGN_CENTER_VERTICAL, 15)
+        
+        self.SetSizer(self.sizer)
+        self.UpdateContent()
+
+    def UpdateContent(self):
+        path = os.path.join(self.project_dir, "kisidian", "NEXT_STEP.md")
+        if os.path.exists(path):
+            try:
+                with open(path, 'r', encoding='utf-8') as f:
+                    content = f.read()
+                # Find the first checkbox or line after header
+                lines = content.splitlines()
+                step = "No steps found yet."
+                for line in lines:
+                    trimmed = line.strip()
+                    if trimmed.startswith("- [ ]"):
+                        step = trimmed.replace("- [ ]", "").strip()
+                        break
+                    elif trimmed and not trimmed.startswith("#") and not trimmed.startswith(">"):
+                        step = trimmed
+                        break
+                self.text.SetLabel(step[:120] + ("..." if len(step) > 120 else ""))
+            except:
+                self.text.SetLabel("Could not read NEXT_STEP.md")
+        else:
+            self.text.SetLabel("Missing NEXT_STEP.md. Create it to see your re-entry point!")
+        
+        self.text.Refresh() # Force refresh for some Linux environments
+        self.Layout()
+
+    def OnUpdatePlan(self, event):
+        # We need a reference to the main frame to switch tabs
+        frame = self.GetTopLevelParent()
+        if hasattr(frame, "_on_file_selected"):
+            # Force selection even if already active to ensure focus
+            frame.active_file = None 
+            frame._on_file_selected("NEXT_STEP.md")
+            if hasattr(frame, "editor"):
+                frame.editor.SetFocus()
+
+
 class LivePreviewFrame(wx.Frame):
     def __init__(self, project_dir=None):
         super().__init__(None, title="KiSidian", size=(1280, 800))
@@ -569,9 +669,16 @@ class LivePreviewFrame(wx.Frame):
         self.show_preview = True
         
         self.core_files = {
+            "NEXT_STEP.md": "Next Re-entry Step",
             "design_notes.md": "Design Notes",
             "component_note.md": "Component Note",
             "checklist.md": "Checklist"
+        }
+
+        self.energy_levels = {
+            "heavy": "🔴 Heavy",
+            "medium": "🟡 Medium",
+            "light": "🟢 Light"
         }
 
         self._ensure_kisidian_setup()
@@ -595,7 +702,149 @@ class LivePreviewFrame(wx.Frame):
             path = os.path.join(self.kisidian_dir, filename)
             if not os.path.exists(path):
                 with open(path, 'w', encoding='utf-8') as f:
-                    f.write(f"# {title}\n\nStart writing your notes here...")
+                    if filename == "NEXT_STEP.md":
+                        f.write(f"# {title}\n\n> [!important]\n> Write the very first 3 steps for the next session here.\n\n- [ ] Step 1\n")
+                    else:
+                        f.write(f"# {title}\n\nStart writing your notes here...")
+
+    def _on_progress_paint(self, event):
+        dc = wx.AutoBufferedPaintDC(self.progress_bar)
+        dc.SetBackground(wx.Brush(wx.Colour("#2A2D34")))
+        dc.Clear()
+        
+        w, h = self.progress_bar.GetSize()
+        # Parse progress from label "Progress: X%"
+        try:
+            percent = int(self.progress_label.GetLabel().split(": ")[1].replace("%", ""))
+        except:
+            percent = 0
+            
+        if percent > 0:
+            fill_w = int((percent / 100) * w)
+            # Gradient color from Orange to Green
+            color = wx.Colour(209, 154, 102) if percent < 50 else wx.Colour(152, 195, 121)
+            dc.SetBrush(wx.Brush(color))
+            dc.SetPen(wx.Pen(color))
+            dc.DrawRectangle(0, 0, fill_w, h)
+
+    def _update_progress_units(self):
+        text = self.editor.GetValue()
+        total = len(re.findall(r'\[\s\]|\[x\]', text))
+        checked = len(re.findall(r'\[x\]', text))
+        
+        percent = int((checked / total) * 100) if total > 0 else 0
+        self.progress_label.SetLabel(f"Progress: {percent}%")
+        self.progress_bar.Refresh()
+
+    def _on_finish_session_clicked(self, event):
+        self._save_to_file()
+        
+        # Shutdown Ritual Modal - Make it resizable
+        dlg = wx.Dialog(self, title="Finish Session ritual", size=(700, 600), style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER)
+        dlg.SetBackgroundColour(APP_BG)
+        
+        main_sizer = wx.BoxSizer(wx.VERTICAL)
+        
+        # Header
+        title = wx.StaticText(dlg, label="Capture your brain state before leaving...")
+        title.SetForegroundColour("#FFFFFF")
+        title.SetFont(wx.Font(12, wx.FONTFAMILY_DEFAULT, wx.FONTSTYLE_NORMAL, wx.FONTWEIGHT_BOLD))
+        main_sizer.Add(title, 0, wx.ALL | wx.EXPAND, 20)
+        
+        # Splitter Window
+        splitter = wx.SplitterWindow(dlg, style=wx.SP_LIVE_UPDATE | wx.SP_3DSASH | wx.BORDER_NONE)
+        splitter.SetMinimumPaneSize(120)
+        
+        # Top Pane: Result
+        top_pane = wx.Panel(splitter)
+        top_pane.SetBackgroundColour(APP_BG)
+        top_sizer = wx.BoxSizer(wx.VERTICAL)
+        
+        label1 = wx.StaticText(top_pane, label="What is the result of this session?")
+        label1.SetForegroundColour("#ABB2BF")
+        top_sizer.Add(label1, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
+        
+        res_ctrl = StyledMarkdownCtrl(top_pane, show_line_numbers=False)
+        top_sizer.Add(res_ctrl, 1, wx.EXPAND | wx.LEFT | wx.RIGHT, 10)
+        top_pane.SetSizer(top_sizer)
+        
+        # Bottom Pane: Next Steps
+        bottom_pane = wx.Panel(splitter)
+        bottom_pane.SetBackgroundColour(APP_BG)
+        bottom_sizer = wx.BoxSizer(wx.VERTICAL)
+        
+        label2 = wx.StaticText(bottom_pane, label="Next Re-entry Step (First 3 steps):")
+        label2.SetForegroundColour("#E5C07B")
+        bottom_sizer.Add(label2, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
+        
+        next_ctrl = StyledMarkdownCtrl(bottom_pane, show_line_numbers=False)
+        next_ctrl.SetText("- [ ] ")
+        next_ctrl.SetInsertionPointEnd()
+        bottom_sizer.Add(next_ctrl, 1, wx.EXPAND | wx.LEFT | wx.RIGHT, 10)
+        bottom_pane.SetSizer(bottom_sizer)
+        
+        splitter.SplitHorizontally(top_pane, bottom_pane, sashPosition=230)
+        main_sizer.Add(splitter, 1, wx.EXPAND | wx.LEFT | wx.RIGHT, 10)
+        
+        # Action Buttons Area
+        button_sizer = wx.BoxSizer(wx.HORIZONTAL)
+        
+        cancel_btn = wx.Button(dlg, wx.ID_CANCEL, label="Discard & Cancel", size=(150, 38))
+        cancel_btn.SetBackgroundColour("#3E4452")
+        cancel_btn.SetForegroundColour("#FFFFFF")
+        
+        ok_btn = wx.Button(dlg, wx.ID_OK, label="Save & Finish", size=(170, 38))
+        ok_btn.SetBackgroundColour(GREEN) # Green theme color
+        ok_btn.SetForegroundColour("#1B1D23")
+        ok_btn.SetFont(wx.Font(10, wx.FONTFAMILY_DEFAULT, wx.FONTSTYLE_NORMAL, wx.FONTWEIGHT_BOLD))
+        
+        button_sizer.Add(cancel_btn, 0, wx.RIGHT, 15)
+        button_sizer.Add(ok_btn, 0)
+        
+        main_sizer.Add(button_sizer, 0, wx.ALIGN_RIGHT | wx.ALL, 20)
+        
+        dlg.SetSizer(main_sizer)
+        dlg.Layout()
+        
+        if dlg.ShowModal() == wx.ID_OK:
+            res = res_ctrl.GetText().strip()
+            nxt = next_ctrl.GetText().strip()
+            
+            # Update NEXT_STEP.md
+            path = os.path.join(self.kisidian_dir, "NEXT_STEP.md")
+            now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
+            
+            log_entry = f"\n\n## Session End: {now}\n**Result:** {res}\n**Next Steps:**\n{nxt}\n"
+            
+            try:
+                # Append to beginning after header
+                with open(path, 'r', encoding='utf-8') as f:
+                    content = f.read()
+                
+                # Check for header
+                if content.startswith("#"):
+                    parts = content.split("\n", 1)
+                    new_content = parts[0] + log_entry + (parts[1] if len(parts) > 1 else "")
+                else:
+                    new_content = "# Next Re-entry Step" + log_entry + content
+                
+                with open(path, 'w', encoding='utf-8') as f:
+                    f.write(new_content)
+                
+                # Sync UI
+                self.next_step_banner.UpdateContent()
+                
+                # If we are currently editing NEXT_STEP.md, reload the editor
+                if self.active_file == "NEXT_STEP.md":
+                    self.editor.SetText(new_content)
+                    self._update_progress_units()
+                    self._update_preview()
+
+                wx.MessageBox("Next step saved! See you next session.", "Session Finished", wx.OK | wx.ICON_INFORMATION)
+            except Exception as e:
+                wx.MessageBox(f"Failed to update NEXT_STEP.md: {str(e)}", "Error")
+        
+        dlg.Destroy()
 
     def load_content(self, text):
         self.editor.SetText(text)
@@ -612,6 +861,10 @@ class LivePreviewFrame(wx.Frame):
 
         header = self._build_header(panel)
         root.Add(header, 0, wx.EXPAND)
+
+        # Re-entry Banner
+        self.next_step_banner = NextStepBanner(panel, self.project_dir)
+        root.Add(self.next_step_banner, 0, wx.EXPAND)
 
         # Tabs Area
         self.tabs_container = wx.Panel(panel)
@@ -657,6 +910,31 @@ class LivePreviewFrame(wx.Frame):
         self.splitter.SplitVertically(self.editor_panel, self.preview_panel, sashPosition=500)
         root.Add(self.splitter, 1, wx.EXPAND)
 
+        # Progress Status Bar
+        self.status_bar = wx.Panel(panel)
+        self.status_bar.SetBackgroundColour("#1B1D23")
+        self.status_sizer = wx.BoxSizer(wx.HORIZONTAL)
+        
+        self.progress_label = wx.StaticText(self.status_bar, label="Progress: 0%")
+        self.progress_label.SetForegroundColour("#ABB2BF")
+        self.progress_label.SetFont(wx.Font(9, wx.FONTFAMILY_DEFAULT, wx.FONTSTYLE_NORMAL, wx.FONTWEIGHT_NORMAL))
+        
+        # Simple custom progress bar
+        self.progress_bar = wx.Panel(self.status_bar, size=(200, 8))
+        self.progress_bar.SetBackgroundColour("#2A2D34")
+        self.progress_bar.Bind(wx.EVT_PAINT, self._on_progress_paint)
+        
+        self.status_sizer.Add(self.progress_label, 0, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 8)
+        self.status_sizer.Add(self.progress_bar, 0, wx.LEFT | wx.ALIGN_CENTER_VERTICAL, 10)
+        self.status_sizer.AddStretchSpacer()
+        
+        file_info = wx.StaticText(self.status_bar, label="Context: Active Session")
+        file_info.SetForegroundColour("#6B7280")
+        self.status_sizer.Add(file_info, 0, wx.RIGHT | wx.ALIGN_CENTER_VERTICAL, 15)
+        
+        self.status_bar.SetSizer(self.status_sizer)
+        root.Add(self.status_bar, 0, wx.EXPAND)
+
         panel.SetSizer(root)
         self.SetBackgroundColour(APP_BG)
 
@@ -678,7 +956,11 @@ class LivePreviewFrame(wx.Frame):
         self.tab_buttons = {}
 
         for filename in self.file_items:
+            energy_icon = self._get_energy_label(filename)
             display_name = self.core_files.get(filename, filename.replace(".md", "").replace("_", " ").title())
+            if energy_icon:
+                display_name = f"{energy_icon} {display_name}"
+                
             is_active = (filename == self.active_file)
             
             tab = TabButton(self.tabs_container, filename, display_name, is_active, self._on_tab_click, self._on_tab_right_click)
@@ -711,6 +993,13 @@ class LivePreviewFrame(wx.Frame):
         item_rename = menu.Append(wx.ID_ANY, f"Rename '{filename}'")
         item_delete = menu.Append(wx.ID_ANY, f"Delete '{filename}'")
         
+        menu.AppendSeparator()
+        energy_menu = wx.Menu()
+        for level_id, label in self.energy_levels.items():
+            item = energy_menu.Append(wx.ID_ANY, label)
+            self.Bind(wx.EVT_MENU, lambda e, lid=level_id: self._on_set_energy(filename, lid), item)
+        menu.AppendSubMenu(energy_menu, "Set Energy Level")
+
         # Disable rename/delete for core files
         if filename in self.core_files:
             item_rename.Enable(False)
@@ -782,6 +1071,34 @@ class LivePreviewFrame(wx.Frame):
             except Exception as e:
                 wx.MessageBox(f"Could not delete file: {str(e)}", "Error", wx.OK | wx.ICON_ERROR)
 
+    def _on_set_energy(self, filename, level):
+        # We'll store energy levels in a hidden metadata file
+        metadata_path = os.path.join(self.kisidian_dir, ".metadata")
+        data = {}
+        if os.path.exists(metadata_path):
+            try:
+                with open(metadata_path, 'r') as f:
+                    data = json.load(f)
+            except: pass
+        
+        data[filename] = level
+        with open(metadata_path, 'w') as f:
+            json.dump(data, f)
+            
+        self._update_tab_buttons()
+
+    def _get_energy_label(self, filename):
+        metadata_path = os.path.join(self.kisidian_dir, ".metadata")
+        if os.path.exists(metadata_path):
+            try:
+                with open(metadata_path, 'r') as f:
+                    data = json.load(f)
+                    level = data.get(filename)
+                    if level:
+                        return self.energy_levels[level].split(" ")[0] # Just the icon
+            except: pass
+        return ""
+
     def _on_file_selected(self, filename):
         if self.active_file == filename:
             return
@@ -790,6 +1107,9 @@ class LivePreviewFrame(wx.Frame):
             self._save_to_file()
             
         self.active_file = filename
+        if self.active_file == "NEXT_STEP.md":
+            self.next_step_banner.UpdateContent()
+            
         path = os.path.join(self.kisidian_dir, filename)
         
         if os.path.exists(path):
@@ -797,6 +1117,7 @@ class LivePreviewFrame(wx.Frame):
                 with open(path, 'r', encoding='utf-8') as f:
                     content = f.read()
                 self.editor.SetText(content)
+                self._update_progress_units()
                 self._update_preview()
                 self._update_tab_buttons() # Redraw tabs to update highlight
             except Exception as e:
@@ -827,7 +1148,6 @@ class LivePreviewFrame(wx.Frame):
         badge.SetForegroundColour("#DCE3EA")
         badge.SetBackgroundColour("#2A2D34")
         badge.SetWindowStyleFlag(wx.BORDER_NONE)
-        
         self.toggle_preview_btn = wx.Button(header, label="Hide Preview", size=(120, 30))
         self.toggle_preview_btn.SetBackgroundColour("#2D3139")
         self.toggle_preview_btn.SetForegroundColour("#E5E9F0")
@@ -837,9 +1157,16 @@ class LivePreviewFrame(wx.Frame):
         save_btn.SetBackgroundColour("#2D3139")
         save_btn.SetForegroundColour("#E5E9F0")
         save_btn.Bind(wx.EVT_BUTTON, self._on_save_clicked)
+        
+        finish_btn = wx.Button(header, label="Finish Session", size=(120, 30))
+        finish_btn.SetBackgroundColour("#98C379") # Green for finishing
+        finish_btn.SetForegroundColour("#1B1D23")
+        finish_btn.SetFont(wx.Font(9, wx.FONTFAMILY_DEFAULT, wx.FONTSTYLE_NORMAL, wx.FONTWEIGHT_BOLD))
+        finish_btn.Bind(wx.EVT_BUTTON, self._on_finish_session_clicked)
 
         sizer.Add(self.toggle_preview_btn, 0, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 12)
         sizer.Add(save_btn, 0, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 12)
+        sizer.Add(finish_btn, 0, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 12)
         sizer.Add(badge, 0, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 12)
 
         header.SetSizer(sizer)
@@ -928,8 +1255,14 @@ class LivePreviewFrame(wx.Frame):
     def _on_text_change(self, event):
         if self._preview_timer is not None:
             self._preview_timer.Stop()
-        self._preview_timer = wx.CallLater(120, self._update_preview)
+        self._preview_timer = wx.CallLater(120, self._on_text_change_timer)
         event.Skip()
+
+    def _on_text_change_timer(self):
+        self._update_preview()
+        self._update_progress_units()
+        if self.active_file == "NEXT_STEP.md":
+            self.next_step_banner.UpdateContent()
 
     def _on_save_clicked(self, event):
         self._save_to_file()
