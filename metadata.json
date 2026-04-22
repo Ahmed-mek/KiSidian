@@ -31,6 +31,15 @@
     ],
     "versions": [
         {
+            "version": "1.3.0",
+            "status": "stable",
+            "kicad_version": "8.0",
+            "download_sha256": "a5e01f623aedd1568d9797989415ae904bf5cda3e8fd46a29b0fc381a3e165fd",
+            "download_size": 144599,
+            "download_url": "https://github.com/Ahmed-mek/KiSidian/releases/download/v1.3.0/KiSidian-1.3.0-pcm.zip",
+            "install_size": 405013
+        },
+        {
             "version": "1.2.0",
             "status": "stable",
             "kicad_version": "8.0",

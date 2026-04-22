@@ -14,6 +14,8 @@ LIB_DIR = os.path.join(PLUG_DIR, 'lib')
 if LIB_DIR not in sys.path:
     sys.path.insert(0, LIB_DIR)
 
+VERSION = "1.3.0"
+
 try:
     import wx.html2 as _html2
 except Exception:
@@ -661,7 +663,7 @@ class NextStepBanner(wx.Panel):
 
 class LivePreviewFrame(wx.Frame):
     def __init__(self, project_dir=None):
-        super().__init__(None, title="KiSidian", size=(1280, 800))
+        super().__init__(None, title=f"KiSidian v{VERSION}", size=(1280, 800))
         self.project_dir = project_dir
         self.kisidian_dir = os.path.join(project_dir, "kisidian") if project_dir else None
         self.active_file = None
@@ -1291,9 +1293,9 @@ class KiSidianPlugin(pcbnew.ActionPlugin):
         self.frame = None
 
     def defaults(self):
-        self.name = "KiSidian"
+        self.name = f"KiSidian v{VERSION}"
         self.category = "Productivity"
-        self.description = "Obsidian-style notes inside KiCad"
+        self.description = "Obsidian-style notes inside KiCad - Professional Edition"
         self.show_toolbar_button = True
         self.shortcut = "Ctrl+Alt+K"
         # Load icon dynamically
